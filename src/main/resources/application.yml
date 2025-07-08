@@ -1,0 +1,173 @@
+spring:
+  application:
+    name: arequipa-aire-backend
+    version: @project.version@
+  
+  profiles:
+    active: @spring.profiles.active@
+  
+  datasource:
+    url: jdbc:h2:mem:testdb;DB_CLOSE_DELAY=-1;DB_CLOSE_ON_EXIT=FALSE
+    driver-class-name: org.h2.Driver
+    username: sa
+    password: password
+    
+  h2:
+    console:
+      enabled: true
+      path: /h2-console
+      
+  jpa:
+    database-platform: org.hibernate.dialect.H2Dialect
+    hibernate:
+      ddl-auto: create-drop
+    show-sql: false
+    properties:
+      hibernate:
+        format_sql: true
+        use_sql_comments: true
+        jdbc:
+          batch_size: 20
+        order_inserts: true
+        order_updates: true
+    open-in-view: false
+    
+  cache:
+    type: caffeine
+    caffeine:
+      spec: maximumSize=1000,expireAfterWrite=30m
+      
+  security:
+    oauth2:
+      resourceserver:
+        jwt:
+          issuer-uri: ${JWT_ISSUER_URI:http://localhost:8080}
+          
+  jackson:
+    serialization:
+      write-dates-as-timestamps: false
+    deserialization:
+      fail-on-unknown-properties: false
+    time-zone: America/Lima
+    
+  task:
+    scheduling:
+      pool:
+        size: 5
+    execution:
+      pool:
+        core-size: 5
+        max-size: 10
+        queue-capacity: 100
+
+server:
+  port: 8080
+  servlet:
+    context-path: /api
+  compression:
+    enabled: true
+    mime-types: application/json,application/xml,text/html,text/xml,text/plain
+    min-response-size: 1024
+  error:
+    include-stacktrace: never
+    include-message: always
+    include-binding-errors: always
+
+logging:
+  level:
+    com.arequipa.aire.backend: INFO
+    org.springframework.security: DEBUG
+    org.hibernate.SQL: INFO
+    org.hibernate.type.descriptor.sql.BasicBinder: INFO
+  pattern:
+    console: "%d{yyyy-MM-dd HH:mm:ss} - %msg%n"
+    file: "%d{yyyy-MM-dd HH:mm:ss} [%thread] %-5level %logger{36} - %msg%n"
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics,prometheus
+      base-path: /actuator
+  endpoint:
+    health:
+      show-details: when-authorized
+      show-components: always
+  metrics:
+    export:
+      prometheus:
+        enabled: true
+        
+app:
+  jwt:
+    secret: ${JWT_SECRET:mySecretKey}
+    expiration: 86400000 # 24 hours
+    
+  api:
+    openweather:
+      key: ${OPENWEATHER_API_KEY:demo_key}
+      base-url: http://api.openweathermap.org/data/2.5
+      air-pollution-url: http://api.openweathermap.org/data/2.5/air_pollution
+      timeout: 10s
+      retry:
+        max-attempts: 3
+        delay: 2s
+        
+    waqi:
+      key: ${WAQI_API_KEY:demo_key}
+      base-url: https://api.waqi.info
+      timeout: 10s
+      retry:
+        max-attempts: 3
+        delay: 2s
+        
+    ml-service:
+      base-url: ${ML_SERVICE_URL:http://localhost:8001}
+      timeout: 30s
+      retry:
+        max-attempts: 2
+        delay: 5s
+        
+  scheduler:
+    data-collection:
+      enabled: true
+      interval: 3600000 # 1 hour in milliseconds
+    alert-check:
+      enabled: true
+      interval: 300000 # 5 minutes in milliseconds
+    cleanup:
+      enabled: true
+      cron: "0 0 2 * * ?" # Daily at 2 AM
+      retention-days: 90
+      
+  cache:
+    ttl:
+      estaciones: 1800 # 30 minutes
+      mediciones-actuales: 900 # 15 minutes
+      predicciones: 3600 # 1 hour
+      
+  cors:
+    allowed-origins:
+      - http://localhost:3000
+      - http://localhost:3001
+      - https://arequipa-aire.com
+    allowed-methods:
+      - GET
+      - POST
+      - PUT
+      - DELETE
+      - OPTIONS
+    allowed-headers: "*"
+    allow-credentials: true
+    max-age: 3600
+
+springdoc:
+  api-docs:
+    path: /v3/api-docs
+    enabled: true
+  swagger-ui:
+    path: /swagger-ui.html
+    enabled: true
+    operationsSorter: method
+    disable-swagger-default-url: true
+  show-actuator: false
