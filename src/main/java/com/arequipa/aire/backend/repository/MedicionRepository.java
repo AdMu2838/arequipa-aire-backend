@@ -122,4 +122,10 @@ public interface MedicionRepository extends JpaRepository<Medicion, Long> {
      */
     @Query("SELECT MIN(m.fechaMedicion), MAX(m.fechaMedicion) FROM Medicion m WHERE m.estacion.id = :estacionId")
     Object[] findRangoFechasByEstacionId(@Param("estacionId") Long estacionId);
+
+    /**
+     * Encuentra la medición más reciente por nombre de estación.
+     */
+    @Query("SELECT m FROM Medicion m WHERE LOWER(m.estacion.nombre) LIKE LOWER(CONCAT('%', :nombreEstacion, '%')) ORDER BY m.fechaMedicion DESC LIMIT 1")
+    Optional<Medicion> findTopByEstacionNombreContainingIgnoreCaseOrderByFechaMedicionDesc(@Param("nombreEstacion") String nombreEstacion);
 }

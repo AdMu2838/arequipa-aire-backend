@@ -27,11 +27,11 @@ public class Estacion {
     private String descripcion;
 
     @NotNull
-    @Column(nullable = false, precision = 10, scale = 7)
+    @Column(nullable = false, precision = 10)
     private Double latitud;
 
     @NotNull
-    @Column(nullable = false, precision = 10, scale = 7)
+    @Column(nullable = false, precision = 10)
     private Double longitud;
 
     @Size(max = 100)
