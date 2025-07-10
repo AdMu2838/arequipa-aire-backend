@@ -5,11 +5,8 @@ import com.arequipa.aire.backend.entity.Estacion;
 import com.arequipa.aire.backend.entity.Medicion;
 import com.arequipa.aire.backend.repository.EstacionRepository;
 import com.arequipa.aire.backend.repository.MedicionRepository;
-import com.arequipa.aire.backend.util.AQICalculator;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
-import io.swagger.v3.oas.annotations.responses.ApiResponse;
-import io.swagger.v3.oas.annotations.responses.ApiResponses;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -41,9 +38,6 @@ public class MedicionController {
 
     @Autowired
     private EstacionRepository estacionRepository;
-
-    @Autowired
-    private AQICalculator aqiCalculator;
 
     @Operation(summary = "Obtener todas las mediciones", description = "Devuelve una lista paginada de todas las mediciones")
     @GetMapping
@@ -99,8 +93,8 @@ public class MedicionController {
     }
 
     @Operation(summary = "Obtener mediciones por rango de fechas", description = "Devuelve mediciones en un rango de fechas específico")
-    @GetMapping("/rango-fechas")
-    public ResponseEntity<List<CalidadAireDTO>> getMedicionesByFechaRange(
+    @GetMapping("/fecha")
+    public ResponseEntity<List<CalidadAireDTO>> getMedicionesByFecha(
             @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) LocalDateTime fechaInicio,
             @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) LocalDateTime fechaFin,
             @RequestParam(required = false) Long estacionId) {
@@ -145,28 +139,21 @@ public class MedicionController {
         return ResponseEntity.status(HttpStatus.CREATED).body(convertToDTO(savedMedicion));
     }
 
-    @Operation(summary = "Obtener estadísticas de calidad del aire", description = "Devuelve estadísticas agregadas de calidad del aire")
-    @GetMapping("/estadisticas")
-    public ResponseEntity<String> getEstadisticas(
-            @RequestParam(required = false) Long estacionId,
-            @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) LocalDateTime fechaInicio,
-            @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) LocalDateTime fechaFin) {
-
-        // Placeholder para estadísticas - implementar lógica específica después
-        return ResponseEntity.ok("Estadísticas no implementadas aún para el período: " + fechaInicio + " - " + fechaFin);
+    @Operation(summary = "Obtener medición por ID", description = "Devuelve una medición específica por su ID")
+    @GetMapping("/{id}")
+    public ResponseEntity<CalidadAireDTO> getMedicionById(@PathVariable Long id) {
+        Optional<Medicion> medicion = medicionRepository.findById(id);
+        return medicion.map(m -> ResponseEntity.ok(convertToDTO(m)))
+                      .orElse(ResponseEntity.notFound().build());
     }
 
-    @Operation(summary = "Obtener calidad del aire actual", description = "Devuelve la calidad del aire actual de todas las estaciones activas")
-    @GetMapping("/actual")
-    public ResponseEntity<List<CalidadAireDTO>> getCalidadAireActual() {
-        List<Medicion> ultimasMediciones = medicionRepository.findLatestMedicionesPorEstacion();
-
-        List<CalidadAireDTO> calidadActual = ultimasMediciones.stream()
-                .map(this::convertToDTO)
-                .filter(java.util.Objects::nonNull)
-                .collect(Collectors.toList());
-
-        return ResponseEntity.ok(calidadActual);
+    @Operation(summary = "Obtener última medición", description = "Devuelve la medición más reciente del sistema")
+    @GetMapping("/ultima")
+    public ResponseEntity<CalidadAireDTO> getUltimaMedicion() {
+        Optional<Medicion> medicion = medicionRepository.findAll().stream()
+                .max((m1, m2) -> m1.getFechaMedicion().compareTo(m2.getFechaMedicion()));
+        return medicion.map(m -> ResponseEntity.ok(convertToDTO(m)))
+                      .orElse(ResponseEntity.notFound().build());
     }
 
     /**

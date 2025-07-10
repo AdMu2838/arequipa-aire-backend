@@ -24,7 +24,7 @@ import java.util.Optional;
 import java.util.stream.Collectors;
 
 /**
- * Controlador REST para gestión de usuarios (sin autenticación por ahora).
+ * Controlador REST para gestión de usuarios.
  */
 @RestController
 @RequestMapping("/api/usuarios")
@@ -53,8 +53,6 @@ public class UsuarioController {
         }
 
         Usuario usuario = convertToEntity(usuarioDTO);
-        // Por ahora guardamos una contraseña por defecto (NO recomendado para producción)
-        usuario.setPassword("default123");
         usuario.setActivo(true);
         usuario.setFechaCreacion(LocalDateTime.now());
         usuario.setFechaActualizacion(LocalDateTime.now());
@@ -183,7 +181,6 @@ public class UsuarioController {
         dto.setTipoSensibilidad(usuario.getTipoSensibilidad());
         dto.setActivo(usuario.getActivo());
         dto.setFechaCreacion(usuario.getFechaCreacion());
-        // No incluir password en el DTO por seguridad
         return dto;
     }
 
@@ -196,7 +193,7 @@ public class UsuarioController {
         usuario.setEmail(dto.getEmail());
         usuario.setNombreCompleto(dto.getNombreCompleto());
         usuario.setTelefono(dto.getTelefono());
-        usuario.setRole(dto.getRole() != null ? dto.getRole() : Usuario.Role.CIUDADANO); // Usar CIUDADANO en lugar de USER
+        usuario.setRole(dto.getRole() != null ? dto.getRole() : Usuario.Role.CIUDADANO);
 
         if (dto.getTipoSensibilidad() != null) {
             usuario.setTipoSensibilidad(dto.getTipoSensibilidad());

@@ -1,161 +1,202 @@
 package com.arequipa.aire.backend.controller;
 
+import com.arequipa.aire.backend.entity.Medicion;
+import com.arequipa.aire.backend.repository.MedicionRepository;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
-import io.swagger.v3.oas.annotations.responses.ApiResponse;
-import io.swagger.v3.oas.annotations.responses.ApiResponses;
 import io.swagger.v3.oas.annotations.tags.Tag;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
 import java.time.LocalDateTime;
 import java.util.*;
+import java.util.stream.Collectors;
 
 /**
- * Controlador REST para datos históricos y predicciones.
+ * Controlador REST para datos históricos.
  */
 @RestController
-@RequestMapping("/api/historicos")
-@Tag(name = "Datos Históricos", description = "API para obtener datos históricos y predicciones")
+@RequestMapping("/api/historico")
+@Tag(name = "Datos Históricos", description = "API para obtener datos históricos")
 @CrossOrigin(origins = "*")
 public class HistoricoController {
 
-    @Operation(summary = "Obtener datos históricos", 
-               description = "Devuelve datos históricos de calidad del aire para una ubicación y período específico")
-    @ApiResponses(value = {
-            @ApiResponse(responseCode = "200", description = "Datos obtenidos exitosamente")
-    })
-    @GetMapping("/ubicacion/{ubicacionId}")
-    public ResponseEntity<List<DatoHistoricoDTO>> getDatosHistoricos(
-            @Parameter(description = "ID de la ubicación")
-            @PathVariable String ubicacionId,
-            @Parameter(description = "Período de tiempo (7days, 30days, 180days)")
-            @RequestParam(defaultValue = "7days") String timeRange) {
+    @Autowired
+    private MedicionRepository medicionRepository;
+
+    @Operation(summary = "Obtener datos históricos por estación", 
+               description = "Devuelve datos históricos de calidad del aire para una estación específica")
+    @GetMapping("/estacion/{estacionId}")
+    public ResponseEntity<List<Object>> getHistorico(
+            @Parameter(description = "ID de la estación")
+            @PathVariable Long estacionId,
+            @Parameter(description = "Fecha de inicio (YYYY-MM-DD)")
+            @RequestParam String fechaInicio,
+            @Parameter(description = "Fecha de fin (YYYY-MM-DD)")
+            @RequestParam String fechaFin) {
         
         try {
-            List<DatoHistoricoDTO> datos = generarDatosHistoricos(ubicacionId, timeRange);
+            LocalDateTime inicio = LocalDateTime.parse(fechaInicio + "T00:00:00");
+            LocalDateTime fin = LocalDateTime.parse(fechaFin + "T23:59:59");
+            
+            // Filtrar mediciones por estación y rango de fechas
+            List<Medicion> mediciones = medicionRepository.findAll()
+                    .stream()
+                    .filter(m -> m.getEstacion().getId().equals(estacionId))
+                    .filter(m -> m.getFechaMedicion().isAfter(inicio) && m.getFechaMedicion().isBefore(fin))
+                    .sorted(Comparator.comparing(Medicion::getFechaMedicion))
+                    .collect(Collectors.toList());
+            
+            List<Object> datos = new ArrayList<>();
+            for (Medicion medicion : mediciones) {
+                Map<String, Object> item = new HashMap<>();
+                item.put("id", medicion.getId());
+                item.put("fechaHora", medicion.getFechaMedicion().toString());
+                item.put("pm25", medicion.getPm25());
+                item.put("pm10", medicion.getPm10());
+                item.put("no2", medicion.getNo2());
+                item.put("o3", medicion.getO3());
+                item.put("co", medicion.getCo());
+                item.put("so2", medicion.getSo2());
+                item.put("temperatura", medicion.getTemperatura());
+                item.put("humedad", medicion.getHumedad());
+                
+                // Calcular AQI simple basado en PM2.5
+                Integer aqi = calcularAQI(medicion.getPm25());
+                item.put("aqi", aqi);
+                item.put("categoria", obtenerCategoriaAQI(aqi));
+                
+                datos.add(item);
+            }
+            
             return ResponseEntity.ok(datos);
         } catch (Exception e) {
             return ResponseEntity.badRequest().build();
         }
     }
 
-    @Operation(summary = "Obtener comparación de contaminantes", 
-               description = "Devuelve datos de comparación de contaminantes para gráficos")
-    @GetMapping("/comparacion/{ubicacionId}")
-    public ResponseEntity<List<DatoComparacionDTO>> getComparacionContaminantes(
-            @Parameter(description = "ID de la ubicación")
-            @PathVariable String ubicacionId) {
+    @Operation(summary = "Obtener promedio histórico", 
+               description = "Devuelve promedios históricos por período")
+    @GetMapping("/promedio/{estacionId}")
+    public ResponseEntity<Object> getPromedioHistorico(
+            @Parameter(description = "ID de la estación")
+            @PathVariable Long estacionId,
+            @Parameter(description = "Período (dia, semana, mes)")
+            @RequestParam String periodo) {
         
-        List<DatoComparacionDTO> datos = generarDatosComparacion(ubicacionId);
-        return ResponseEntity.ok(datos);
-    }
-
-    private List<DatoHistoricoDTO> generarDatosHistoricos(String ubicacionId, String timeRange) {
-        int dias = switch (timeRange) {
-            case "7days" -> 7;
-            case "30days" -> 30;
-            case "180days" -> 180;
-            default -> 7;
-        };
-
-        List<DatoHistoricoDTO> historicos = new ArrayList<>();
-        Random random = new Random();
-
-        // Valores base por ubicación
-        Map<String, Integer> valoresBase = Map.of(
-            "centro", 75,
-            "cercado", 65,
-            "yanahuara", 55,
-            "cayma", 45,
-            "bustamante", 85
-        );
-
-        int baseAQI = valoresBase.getOrDefault(ubicacionId, 70);
-
-        // Generar datos históricos + 2 días de predicción
-        for (int i = dias; i >= -2; i--) {
-            LocalDateTime fecha = LocalDateTime.now().minusDays(i);
+        try {
+            // Obtener datos de los últimos 30 días para calcular promedios
+            LocalDateTime fechaInicio = LocalDateTime.now().minusDays(30);
+            LocalDateTime fechaFin = LocalDateTime.now();
             
-            // Agregar algo de variación estacional y aleatoria
-            double variacion = Math.sin(i * 0.1) * 20 + (random.nextDouble() - 0.5) * 30;
-            int aqi = Math.max(0, (int) (baseAQI + variacion));
+            List<Medicion> mediciones = medicionRepository.findAll()
+                    .stream()
+                    .filter(m -> m.getEstacion().getId().equals(estacionId))
+                    .filter(m -> m.getFechaMedicion().isAfter(fechaInicio) && m.getFechaMedicion().isBefore(fechaFin))
+                    .collect(Collectors.toList());
             
-            DatoHistoricoDTO dato = new DatoHistoricoDTO();
-            dato.setDate(fecha.toLocalDate().toString());
-            dato.setAqi(aqi);
-            dato.setPm25((int) (aqi * 0.4 + (random.nextDouble() - 0.5) * 10));
-            dato.setPm10((int) (aqi * 0.8 + (random.nextDouble() - 0.5) * 15));
-            dato.setNo2((int) (aqi * 0.5 + (random.nextDouble() - 0.5) * 8));
-            dato.setO3((int) (aqi * 1.2 + (random.nextDouble() - 0.5) * 20));
-            dato.setCo((int) (aqi * 25 + (random.nextDouble() - 0.5) * 500));
-            dato.setPredicted(i < 0); // Los últimos 2 días son predicciones
+            if (mediciones.isEmpty()) {
+                return ResponseEntity.ok(Map.of("promedio", 0, "periodo", periodo));
+            }
             
-            historicos.add(dato);
+            // Calcular promedios
+            double promedioPm25 = mediciones.stream()
+                    .mapToDouble(m -> m.getPm25() != null ? m.getPm25() : 0)
+                    .average().orElse(0);
+            double promedioPm10 = mediciones.stream()
+                    .mapToDouble(m -> m.getPm10() != null ? m.getPm10() : 0)
+                    .average().orElse(0);
+            double promedioAQI = mediciones.stream()
+                    .mapToDouble(m -> {
+                        Integer aqi = calcularAQI(m.getPm25());
+                        return aqi != null ? aqi : 0;
+                    })
+                    .average().orElse(0);
+            
+            Map<String, Object> resultado = new HashMap<>();
+            resultado.put("periodo", periodo);
+            resultado.put("pm25", promedioPm25);
+            resultado.put("pm10", promedioPm10);
+            resultado.put("aqi", promedioAQI);
+            resultado.put("totalMediciones", mediciones.size());
+            
+            return ResponseEntity.ok(resultado);
+        } catch (Exception e) {
+            return ResponseEntity.badRequest().build();
         }
-
-        return historicos;
     }
 
-    private List<DatoComparacionDTO> generarDatosComparacion(String ubicacionId) {
-        List<DatoComparacionDTO> datos = new ArrayList<>();
-        String[] contaminantes = {"PM2.5", "PM10", "NO₂", "O₃", "CO"};
-        int[] limites = {25, 50, 40, 100, 10000};
+    @Operation(summary = "Obtener comparación histórica", 
+               description = "Devuelve datos de comparación histórica")
+    @GetMapping("/comparacion/{estacionId}")
+    public ResponseEntity<Object> getComparacionHistorica(
+            @Parameter(description = "ID de la estación")
+            @PathVariable Long estacionId,
+            @Parameter(description = "Fecha de inicio")
+            @RequestParam String fechaInicio,
+            @Parameter(description = "Fecha de fin")
+            @RequestParam String fechaFin) {
         
-        Random random = new Random();
-        
-        for (int i = 0; i < contaminantes.length; i++) {
-            DatoComparacionDTO dato = new DatoComparacionDTO();
-            dato.setName(contaminantes[i]);
-            dato.setValue(random.nextInt(limites[i]) + (int)(limites[i] * 0.1));
-            dato.setLimit(limites[i]);
-            datos.add(dato);
+        try {
+            LocalDateTime inicio = LocalDateTime.parse(fechaInicio + "T00:00:00");
+            LocalDateTime fin = LocalDateTime.parse(fechaFin + "T23:59:59");
+            
+            List<Medicion> mediciones = medicionRepository.findAll()
+                    .stream()
+                    .filter(m -> m.getEstacion().getId().equals(estacionId))
+                    .filter(m -> m.getFechaMedicion().isAfter(inicio) && m.getFechaMedicion().isBefore(fin))
+                    .collect(Collectors.toList());
+            
+            Map<String, Object> comparacion = new HashMap<>();
+            comparacion.put("totalMediciones", mediciones.size());
+            comparacion.put("fechaInicio", fechaInicio);
+            comparacion.put("fechaFin", fechaFin);
+            comparacion.put("estacionId", estacionId);
+            
+            if (!mediciones.isEmpty()) {
+                List<Integer> aqiValues = mediciones.stream()
+                        .map(m -> calcularAQI(m.getPm25()))
+                        .filter(Objects::nonNull)
+                        .collect(Collectors.toList());
+                
+                if (!aqiValues.isEmpty()) {
+                    comparacion.put("maxAQI", aqiValues.stream().mapToInt(Integer::intValue).max().orElse(0));
+                    comparacion.put("minAQI", aqiValues.stream().mapToInt(Integer::intValue).min().orElse(0));
+                    comparacion.put("promedioAQI", aqiValues.stream().mapToDouble(Integer::doubleValue).average().orElse(0));
+                }
+            }
+            
+            return ResponseEntity.ok(comparacion);
+        } catch (Exception e) {
+            return ResponseEntity.badRequest().build();
         }
+    }
+    
+    /**
+     * Calcula el AQI basado en PM2.5 (simplificado)
+     */
+    private Integer calcularAQI(Double pm25) {
+        if (pm25 == null) return null;
         
-        return datos;
+        if (pm25 <= 12.0) return (int) (pm25 * 50 / 12.0);
+        if (pm25 <= 35.4) return (int) (50 + (pm25 - 12.0) * 50 / 23.4);
+        if (pm25 <= 55.4) return (int) (100 + (pm25 - 35.4) * 50 / 20.0);
+        if (pm25 <= 150.4) return (int) (150 + (pm25 - 55.4) * 50 / 95.0);
+        if (pm25 <= 250.4) return (int) (200 + (pm25 - 150.4) * 100 / 100.0);
+        return (int) (300 + (pm25 - 250.4) * 100 / 149.6);
     }
-
-    // DTOs internos
-    public static class DatoHistoricoDTO {
-        private String date;
-        private Integer aqi;
-        private Integer pm25;
-        private Integer pm10;
-        private Integer no2;
-        private Integer o3;
-        private Integer co;
-        private Boolean predicted;
-
-        // Getters y setters
-        public String getDate() { return date; }
-        public void setDate(String date) { this.date = date; }
-        public Integer getAqi() { return aqi; }
-        public void setAqi(Integer aqi) { this.aqi = aqi; }
-        public Integer getPm25() { return pm25; }
-        public void setPm25(Integer pm25) { this.pm25 = pm25; }
-        public Integer getPm10() { return pm10; }
-        public void setPm10(Integer pm10) { this.pm10 = pm10; }
-        public Integer getNo2() { return no2; }
-        public void setNo2(Integer no2) { this.no2 = no2; }
-        public Integer getO3() { return o3; }
-        public void setO3(Integer o3) { this.o3 = o3; }
-        public Integer getCo() { return co; }
-        public void setCo(Integer co) { this.co = co; }
-        public Boolean getPredicted() { return predicted; }
-        public void setPredicted(Boolean predicted) { this.predicted = predicted; }
-    }
-
-    public static class DatoComparacionDTO {
-        private String name;
-        private Integer value;
-        private Integer limit;
-
-        // Getters y setters
-        public String getName() { return name; }
-        public void setName(String name) { this.name = name; }
-        public Integer getValue() { return value; }
-        public void setValue(Integer value) { this.value = value; }
-        public Integer getLimit() { return limit; }
-        public void setLimit(Integer limit) { this.limit = limit; }
+    
+    /**
+     * Obtiene la categoría del AQI
+     */
+    private String obtenerCategoriaAQI(Integer aqi) {
+        if (aqi == null) return "Sin datos";
+        if (aqi <= 50) return "Bueno";
+        if (aqi <= 100) return "Moderado";
+        if (aqi <= 150) return "Dañino para grupos sensibles";
+        if (aqi <= 200) return "Dañino";
+        if (aqi <= 300) return "Muy dañino";
+        return "Peligroso";
     }
 }

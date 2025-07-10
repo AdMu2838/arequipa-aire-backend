@@ -9,8 +9,6 @@ import com.arequipa.aire.backend.repository.EstacionRepository;
 import com.arequipa.aire.backend.repository.UsuarioRepository;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
-import io.swagger.v3.oas.annotations.responses.ApiResponse;
-import io.swagger.v3.oas.annotations.responses.ApiResponses;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -18,12 +16,10 @@ import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Sort;
-import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
-import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Optional;
 import java.util.stream.Collectors;
@@ -69,112 +65,43 @@ public class AlertaController {
         return ResponseEntity.ok(alertasDTO);
     }
 
-    @Operation(summary = "Obtener alertas por usuario", description = "Devuelve las alertas de un usuario específico")
-    @GetMapping("/usuario/{usuarioId}")
-    public ResponseEntity<Page<AlertaDTO>> getAlertasByUsuario(
-            @PathVariable Long usuarioId,
-            @RequestParam(defaultValue = "0") int page,
-            @RequestParam(defaultValue = "10") int size) {
-
-        Optional<Usuario> usuario = usuarioRepository.findById(usuarioId);
-        if (usuario.isEmpty()) {
-            return ResponseEntity.notFound().build();
-        }
-
-        Pageable pageable = PageRequest.of(page, size, Sort.by("fechaCreacion").descending());
-        Page<Alerta> alertas = alertaRepository.findByUsuarioOrderByFechaCreacionDesc(usuario.get(), pageable);
-
-        Page<AlertaDTO> alertasDTO = alertas.map(this::convertToDTO);
-
-        return ResponseEntity.ok(alertasDTO);
-    }
-
-    @Operation(summary = "Obtener alertas no leídas", description = "Devuelve las alertas no leídas de un usuario")
-    @GetMapping("/usuario/{usuarioId}/no-leidas")
-    public ResponseEntity<List<AlertaDTO>> getAlertasNoLeidas(@PathVariable Long usuarioId) {
-        Optional<Usuario> usuario = usuarioRepository.findById(usuarioId);
-        if (usuario.isEmpty()) {
-            return ResponseEntity.notFound().build();
-        }
-
-        List<Alerta> alertas = alertaRepository.findByUsuarioAndLeidaFalseOrderByFechaCreacionDesc(usuario.get());
+    @Operation(summary = "Obtener alertas activas", description = "Devuelve las alertas que están activas/no leídas")
+    @GetMapping("/activas")
+    public ResponseEntity<List<AlertaDTO>> getAlertasActivas() {
+        List<Alerta> alertas = alertaRepository.findAll().stream()
+                .filter(a -> !a.getLeida())
+                .sorted((a1, a2) -> a2.getFechaCreacion().compareTo(a1.getFechaCreacion()))
+                .collect(Collectors.toList());
         List<AlertaDTO> alertasDTO = alertas.stream()
                 .map(this::convertToDTO)
                 .collect(Collectors.toList());
-
         return ResponseEntity.ok(alertasDTO);
     }
 
-    @Operation(summary = "Obtener alertas por estación", description = "Devuelve las alertas relacionadas con una estación específica")
-    @GetMapping("/estacion/{estacionId}")
-    public ResponseEntity<List<AlertaDTO>> getAlertasByEstacion(@PathVariable Long estacionId) {
-        Optional<Estacion> estacion = estacionRepository.findById(estacionId);
-        if (estacion.isEmpty()) {
-            return ResponseEntity.notFound().build();
-        }
-
-        // Por ahora devolvemos una lista vacía ya que el método específico no existe en el repositorio
-        // Se puede implementar más tarde si es necesario
-        List<AlertaDTO> alertasDTO = List.of();
-
-        return ResponseEntity.ok(alertasDTO);
-    }
-
-    @Operation(summary = "Obtener alertas por tipo", description = "Devuelve las alertas de un tipo específico para un usuario")
-    @GetMapping("/usuario/{usuarioId}/tipo/{tipo}")
-    public ResponseEntity<List<AlertaDTO>> getAlertasByTipo(@PathVariable Long usuarioId, @PathVariable String tipo) {
-        Optional<Usuario> usuario = usuarioRepository.findById(usuarioId);
-        if (usuario.isEmpty()) {
-            return ResponseEntity.notFound().build();
-        }
-
+    @Operation(summary = "Obtener alertas por nivel", description = "Devuelve las alertas de un nivel de severidad específico")
+    @GetMapping("/nivel/{nivel}")
+    public ResponseEntity<List<AlertaDTO>> getAlertasByNivel(@PathVariable String nivel) {
         try {
-            Alerta.TipoAlerta tipoAlerta = Alerta.TipoAlerta.valueOf(tipo.toUpperCase());
-            List<Alerta> alertas = alertaRepository.findByUsuarioAndTipoOrderByFechaCreacionDesc(usuario.get(), tipoAlerta);
+            Alerta.SeveridadAlerta severidadAlerta = Alerta.SeveridadAlerta.valueOf(nivel.toUpperCase());
+            List<Alerta> alertas = alertaRepository.findAll().stream()
+                    .filter(a -> a.getSeveridad() == severidadAlerta)
+                    .sorted((a1, a2) -> a2.getFechaCreacion().compareTo(a1.getFechaCreacion()))
+                    .collect(Collectors.toList());
             List<AlertaDTO> alertasDTO = alertas.stream()
                     .map(this::convertToDTO)
                     .collect(Collectors.toList());
-
             return ResponseEntity.ok(alertasDTO);
         } catch (IllegalArgumentException e) {
             return ResponseEntity.badRequest().build();
         }
     }
 
-    @Operation(summary = "Obtener alertas por severidad", description = "Devuelve las alertas de una severidad específica para un usuario")
-    @GetMapping("/usuario/{usuarioId}/severidad/{severidad}")
-    public ResponseEntity<List<AlertaDTO>> getAlertasBySeveridad(@PathVariable Long usuarioId, @PathVariable String severidad) {
-        Optional<Usuario> usuario = usuarioRepository.findById(usuarioId);
-        if (usuario.isEmpty()) {
-            return ResponseEntity.notFound().build();
-        }
-
-        try {
-            Alerta.SeveridadAlerta severidadAlerta = Alerta.SeveridadAlerta.valueOf(severidad.toUpperCase());
-            List<Alerta> alertas = alertaRepository.findByUsuarioAndSeveridadOrderByFechaCreacionDesc(usuario.get(), severidadAlerta);
-            List<AlertaDTO> alertasDTO = alertas.stream()
-                    .map(this::convertToDTO)
-                    .collect(Collectors.toList());
-
-            return ResponseEntity.ok(alertasDTO);
-        } catch (IllegalArgumentException e) {
-            return ResponseEntity.badRequest().build();
-        }
-    }
-
-    @Operation(summary = "Obtener alertas por rango de fechas", description = "Devuelve alertas en un rango de fechas específico")
-    @GetMapping("/rango-fechas")
-    public ResponseEntity<List<AlertaDTO>> getAlertasByFechaRange(
-            @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) LocalDateTime fechaInicio,
-            @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) LocalDateTime fechaFin) {
-
-        List<Alerta> alertas = alertaRepository.findByFechaCreacionBetweenOrderByFechaCreacionDesc(fechaInicio, fechaFin);
-
-        List<AlertaDTO> alertasDTO = alertas.stream()
-                .map(this::convertToDTO)
-                .collect(Collectors.toList());
-
-        return ResponseEntity.ok(alertasDTO);
+    @Operation(summary = "Obtener alerta por ID", description = "Devuelve una alerta específica por su ID")
+    @GetMapping("/{id}")
+    public ResponseEntity<AlertaDTO> getAlertaById(@PathVariable Long id) {
+        Optional<Alerta> alerta = alertaRepository.findById(id);
+        return alerta.map(a -> ResponseEntity.ok(convertToDTO(a)))
+                    .orElse(ResponseEntity.notFound().build());
     }
 
     @Operation(summary = "Crear nueva alerta", description = "Crea una nueva alerta en el sistema")
@@ -197,39 +124,25 @@ public class AlertaController {
         return ResponseEntity.status(HttpStatus.CREATED).body(convertToDTO(savedAlerta));
     }
 
-    @Operation(summary = "Marcar alerta como leída", description = "Marca una alerta específica como leída")
-    @PutMapping("/{id}/marcar-leida")
-    public ResponseEntity<AlertaDTO> marcarAlertaComoLeida(@PathVariable Long id) {
-        Optional<Alerta> alertaOpt = alertaRepository.findById(id);
-        if (alertaOpt.isEmpty()) {
+    @Operation(summary = "Actualizar alerta", description = "Actualiza una alerta existente")
+    @PutMapping("/{id}")
+    public ResponseEntity<AlertaDTO> updateAlerta(@PathVariable Long id, @Valid @RequestBody AlertaDTO alertaDTO) {
+        Optional<Alerta> existingAlerta = alertaRepository.findById(id);
+        if (existingAlerta.isEmpty()) {
             return ResponseEntity.notFound().build();
         }
 
-        Alerta alerta = alertaOpt.get();
-        alerta.setLeida(true);
-        alerta.setFechaLectura(LocalDateTime.now());
+        Alerta alerta = existingAlerta.get();
+        alerta.setTitulo(alertaDTO.getTitulo());
+        alerta.setMensaje(alertaDTO.getMensaje());
+        alerta.setTipo(alertaDTO.getTipo());
+        alerta.setSeveridad(alertaDTO.getSeveridad());
+        alerta.setValorMedido(alertaDTO.getValorMedido());
+        alerta.setUmbralConfigurado(alertaDTO.getUmbralConfigurado());
+        alerta.setLeida(alertaDTO.getLeida());
 
         Alerta updatedAlerta = alertaRepository.save(alerta);
         return ResponseEntity.ok(convertToDTO(updatedAlerta));
-    }
-
-    @Operation(summary = "Marcar todas las alertas como leídas", description = "Marca todas las alertas de un usuario como leídas")
-    @PutMapping("/usuario/{usuarioId}/marcar-todas-leidas")
-    public ResponseEntity<Void> marcarTodasAlertasComoLeidas(@PathVariable Long usuarioId) {
-        Optional<Usuario> usuario = usuarioRepository.findById(usuarioId);
-        if (usuario.isEmpty()) {
-            return ResponseEntity.notFound().build();
-        }
-
-        List<Alerta> alertasNoLeidas = alertaRepository.findByUsuarioAndLeidaFalseOrderByFechaCreacionDesc(usuario.get());
-
-        for (Alerta alerta : alertasNoLeidas) {
-            alerta.setLeida(true);
-            alerta.setFechaLectura(LocalDateTime.now());
-        }
-
-        alertaRepository.saveAll(alertasNoLeidas);
-        return ResponseEntity.ok().build();
     }
 
     @Operation(summary = "Eliminar alerta", description = "Elimina una alerta específica")
@@ -241,14 +154,6 @@ public class AlertaController {
 
         alertaRepository.deleteById(id);
         return ResponseEntity.noContent().build();
-    }
-
-    @Operation(summary = "Obtener alerta por ID", description = "Devuelve una alerta específica por su ID")
-    @GetMapping("/{id}")
-    public ResponseEntity<AlertaDTO> getAlertaById(@PathVariable Long id) {
-        Optional<Alerta> alerta = alertaRepository.findById(id);
-        return alerta.map(a -> ResponseEntity.ok(convertToDTO(a)))
-                    .orElse(ResponseEntity.notFound().build());
     }
 
     /**

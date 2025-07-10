@@ -35,39 +35,39 @@ public class EstacionController {
     @Autowired
     private EstacionRepository estacionRepository;
 
-    @Operation(summary = "Obtener todas las estaciones", description = "Devuelve una lista paginada de todas las estaciones")
+    @Operation(summary = "Obtener todas las estaciones", description = "Devuelve una lista de todas las estaciones o paginada según parámetros")
     @ApiResponses(value = {
             @ApiResponse(responseCode = "200", description = "Lista de estaciones obtenida exitosamente")
     })
     @GetMapping
-    public ResponseEntity<Page<EstacionDTO>> getAllEstaciones(
+    public ResponseEntity<?> getAllEstaciones(
             @Parameter(description = "Número de página (empezando desde 0)")
-            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(required = false) Integer page,
             @Parameter(description = "Tamaño de página")
-            @RequestParam(defaultValue = "10") int size,
+            @RequestParam(required = false) Integer size,
             @Parameter(description = "Campo por el cual ordenar")
             @RequestParam(defaultValue = "id") String sortBy,
             @Parameter(description = "Dirección del ordenamiento (asc/desc)")
             @RequestParam(defaultValue = "asc") String sortDir) {
 
+        // Si no se especifican parámetros de paginación, devolver todas las estaciones
+        if (page == null && size == null) {
+            List<Estacion> estaciones = estacionRepository.findAll();
+            List<EstacionDTO> estacionesDTO = estaciones.stream()
+                    .map(this::convertToDTO)
+                    .collect(Collectors.toList());
+            return ResponseEntity.ok(estacionesDTO);
+        }
+
+        // Si se especifican parámetros de paginación, usar paginación
         Sort sort = sortDir.equalsIgnoreCase("desc") ?
                 Sort.by(sortBy).descending() : Sort.by(sortBy).ascending();
 
-        Pageable pageable = PageRequest.of(page, size, sort);
+        Pageable pageable = PageRequest.of(page != null ? page : 0, size != null ? size : 10, sort);
         Page<Estacion> estaciones = estacionRepository.findAll(pageable);
 
         Page<EstacionDTO> estacionesDTO = estaciones.map(this::convertToDTO);
 
-        return ResponseEntity.ok(estacionesDTO);
-    }
-
-    @Operation(summary = "Obtener estaciones activas", description = "Devuelve solo las estaciones que están activas")
-    @GetMapping("/activas")
-    public ResponseEntity<List<EstacionDTO>> getEstacionesActivas() {
-        List<Estacion> estaciones = estacionRepository.findByActivaTrue();
-        List<EstacionDTO> estacionesDTO = estaciones.stream()
-                .map(this::convertToDTO)
-                .collect(Collectors.toList());
         return ResponseEntity.ok(estacionesDTO);
     }
 
@@ -145,16 +145,6 @@ public class EstacionController {
         estacionRepository.save(estacionToUpdate);
 
         return ResponseEntity.noContent().build();
-    }
-
-    @Operation(summary = "Buscar estaciones por distrito", description = "Busca estaciones en un distrito específico")
-    @GetMapping("/distrito/{distrito}")
-    public ResponseEntity<List<EstacionDTO>> getEstacionesByDistrito(@PathVariable String distrito) {
-        List<Estacion> estaciones = estacionRepository.findByDistritoAndActivaTrue(distrito);
-        List<EstacionDTO> estacionesDTO = estaciones.stream()
-                .map(this::convertToDTO)
-                .collect(Collectors.toList());
-        return ResponseEntity.ok(estacionesDTO);
     }
 
     /**
